@@ -697,6 +697,65 @@ class RadioBrowserApi {
   }
 
   /// Resolve the best language for a globe snap — purely by coordinates.
+  /// Direct Radio.garden place channels lookup (100% native curated streams)
+  Future<List<Station>> getGardenStationsForPlace(
+      String placeId, String placeTitle, String country) async {
+    if (placeId.isEmpty) return [];
+    try {
+      final cacheKey = 'garden_place_$placeId';
+      final cached = await StationDatabase.instance.getCachedStations(cacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        print('RadioGarden: Cache hit for $placeTitle ($placeId)');
+        return cached;
+      }
+
+      final res = await _dio.get(
+        'https://radio.garden/api/ara/content/page/$placeId/channels',
+        options: Options(
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          },
+          receiveTimeout: const Duration(seconds: 4),
+          sendTimeout: const Duration(seconds: 4),
+        ),
+      );
+
+      if (res.statusCode == 200 && res.data != null) {
+        final content = res.data['data']?['content'] as List?;
+        if (content != null && content.isNotEmpty) {
+          final items = content.first['items'] as List?;
+          if (items != null && items.isNotEmpty) {
+            final stations = <Station>[];
+            for (final item in items) {
+              final href = item['href'] as String? ?? '';
+              final name = item['title'] as String? ?? 'Radio Station';
+              final channelId = href.split('/').last;
+              if (channelId.isNotEmpty) {
+                final streamUrl =
+                    'https://radio.garden/api/ara/content/listen/$channelId/channel.mp3';
+                stations.add(Station(
+                  stationUuid: channelId,
+                  name: name,
+                  urlResolved: streamUrl,
+                  country: country,
+                ));
+              }
+            }
+            if (stations.isNotEmpty) {
+              await StationDatabase.instance.cacheStationsForPlace(cacheKey, stations);
+              print('RadioGarden: Fetched ${stations.length} channels for $placeTitle');
+              return stations;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('RadioGarden API failed for $placeId ($placeTitle): $e');
+    }
+    return [];
+  }
+
   /// City name only used as a fast-path override for known major cities.
   static String? resolveLanguage(
       String placeTitle, String countryName, double lat, double lng) {

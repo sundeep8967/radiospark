@@ -27,6 +27,8 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
   late final WebViewController _controller;
   bool _isLoading = true;
 
+  int _fetchToken = 0;
+
   @override
   void initState() {
     super.initState();
@@ -43,9 +45,9 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
             if (type == 'haptic_tick') {
               HapticFeedback.selectionClick();
             } else if (type == 'place_selected') {
-              final id = data['id'] as String;
-              final title = data['title'] as String;
-              final country = data['country'] as String;
+              final id = data['id'] as String? ?? '';
+              final title = data['title'] as String? ?? '';
+              final country = data['country'] as String? ?? '';
               final lat = (data['lat'] as num).toDouble();
               final lng = (data['lng'] as num).toDouble();
 
@@ -58,43 +60,44 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
                 'country': country,
               };
             } else if (type == 'place_ready') {
+              final token = ++_fetchToken;
+              final id = data['id'] as String? ?? '';
               final lat = (data['lat'] as num).toDouble();
               final lng = (data['lng'] as num).toDouble();
               final country = data['country'] as String? ?? '';
               final title = data['title'] as String? ?? '';
-              // City-level language (Indian state precision) → country-level fallback
-              final language = RadioBrowserApi.resolveLanguage(title, country, lat, lng);
-              print('Flutter: place_ready "$title" / "$country" → lang=$language');
+
+              // Immediately indicate loading in UI
+              ref.read(audioControllerProvider.notifier).setLoading(null);
+
+              print('Flutter: place_ready "$title" / "$country" (id: $id)');
 
               Future<void> fetchAndPlay() async {
                 final api = ref.read(radioBrowserApiProvider);
-                List<Station> stations;
+                List<Station> stations = [];
 
-                if (language != null) {
-                  // Language known → pure language search, zero geo, zero cross-border bleed
-                  stations = await api.getStationsByLanguage(language);
-                } else {
-                  // Country not in our map → geo then country-name fallback
-                  // India: tight 50km (state borders are close together linguistically)
-                  // Rest of world: 100km (safe, language = national borders)
-                  final geoRadius = country.toLowerCase() == 'india' ? 50 : 100;
-                  stations = await api.getStationsByGeo(lat, lng, radiusKm: geoRadius);
-                  if (stations.isEmpty && country.isNotEmpty) {
-                    stations = await api.getStationsByCountry(country);
-                  }
+                // Query ONLY Radio.garden native city channels (100% curated, working streams)
+                if (id.isNotEmpty) {
+                  stations = await api.getGardenStationsForPlace(id, title, country);
                 }
+
+                // If user moved to another place during fetch, discard stale results
+                if (token != _fetchToken) return;
 
                 ref.read(currentStationsProvider.notifier).state = stations;
                 ref.read(currentStationIndexProvider.notifier).state = 0;
+
                 if (stations.isNotEmpty) {
                   final first = stations.first;
                   ref.read(nearestStationProvider.notifier).state = first;
+                  ref.read(audioControllerProvider.notifier).setLoading(first);
+
                   print('Flutter: Playing "${first.name}"');
                   final url = first.urlResolved.replaceAll("'", "\\'");
                   _controller.runJavaScript("playStation('$url');");
-                  ref.read(audioControllerProvider.notifier).setPlaying(first);
                 } else {
                   ref.read(nearestStationProvider.notifier).state = null;
+                  ref.read(audioControllerProvider.notifier).setError();
                 }
               }
               fetchAndPlay();
@@ -111,21 +114,16 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
               final idx = ref.read(currentStationIndexProvider);
               final nextIdx = idx + 1;
               if (nextIdx < stations.length && nextIdx < idx + 6) {
-                // Skip to next, max 5 skips per snap
+                // Skip to next station with loading state
                 final next = stations[nextIdx];
                 ref.read(currentStationIndexProvider.notifier).state = nextIdx;
                 ref.read(nearestStationProvider.notifier).state = next;
+                ref.read(audioControllerProvider.notifier).setLoading(next);
+
                 final url = next.urlResolved.replaceAll("'", "\\'");
                 _controller.runJavaScript("playStation('$url');");
-                ref.read(audioControllerProvider.notifier).setPlaying(next);
               } else {
                 ref.read(audioControllerProvider.notifier).setError();
-              }
-            } else {
-              final lat = (data['lat'] as num?)?.toDouble();
-              final lng = (data['lng'] as num?)?.toDouble();
-              if (lat != null && lng != null) {
-                ref.read(globeCenterProvider.notifier).state = {'lat': lat, 'lng': lng};
               }
             }
           } catch (e) {

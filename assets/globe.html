@@ -28,19 +28,23 @@
     let myGlobe = Globe()
       (document.getElementById('globeViz'))
       .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
-      .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
       .backgroundColor('#000005')
       .showAtmosphere(true)
       .atmosphereColor('#7c3aed')
-      .atmosphereAltitude(0.18)
+      .atmosphereAltitude(0.12)
       .pointColor(() => '#00E676')
-      .pointAltitude(0.004)
-      .pointRadius(d => {
-        return Math.max(0.12, Math.min(0.28, Math.log2((d.size || 1) + 1) * 0.055));
-      })
+      .pointAltitude(0.002)
+      .pointRadius(0.18)
       .pointsData([]);
 
     window.myGlobe = myGlobe; // expose globally so Flutter runJavaScript can call it
+
+    // Optimize WebGL renderer performance on mobile GPUs (1.0 DPR gives 60 FPS)
+    const renderer = myGlobe.renderer();
+    renderer.setPixelRatio(1.0);
+    if (renderer.capabilities && renderer.capabilities.isWebGL2) {
+      renderer.powerPreference = 'high-performance';
+    }
 
     // Default view over Karnataka, India
     myGlobe.pointOfView({ lat: 12.9716, lng: 77.5946, altitude: 2.5 });
@@ -52,14 +56,18 @@
     // Populate places list and build spatial index grid
     function initPlaces(placesList) {
       console.log("initPlaces called with list length:", placesList ? placesList.length : 0);
-      allPlaces = placesList.map(p => ({
-        lat: p.geo[1],
-        lng: p.geo[0],
-        id: p.id,
-        title: p.title,
-        country: p.country,
-        size: p.size
-      }));
+      
+      // Filter out places with 0 available stations (size == 0)
+      allPlaces = placesList
+        .filter(p => p.size && p.size > 0)
+        .map(p => ({
+          lat: p.geo[1],
+          lng: p.geo[0],
+          id: p.id,
+          title: p.title,
+          country: p.country,
+          size: p.size
+        }));
 
       // Build spatial grid for fast lookup
       placeGrid = {};
@@ -163,6 +171,7 @@
         // Tell Flutter to fetch stations for this lat/lng via Radio Browser (no Radio.garden needed)
         window.GlobeChannel.postMessage(JSON.stringify({
           type: 'place_ready',
+          id: place.id,
           lat: place.lat,
           lng: place.lng,
           country: place.country,
@@ -185,9 +194,14 @@
       snapTimeout = setTimeout(snapToNearest, 250);
     });
 
-    // Notify Flutter of live positions during manual rotation
+    // Throttled notification of live positions during manual rotation (prevents bridge spam)
+    let lastChangeMsgTime = 0;
     controls.addEventListener('change', () => {
       if (!isUserInteracting) return;
+      const now = Date.now();
+      if (now - lastChangeMsgTime < 150) return; // limit to ~6 messages/sec while dragging
+      lastChangeMsgTime = now;
+
       const pov = myGlobe.pointOfView();
       if (window.GlobeChannel) {
         window.GlobeChannel.postMessage(JSON.stringify({

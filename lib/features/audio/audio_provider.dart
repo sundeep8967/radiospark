@@ -109,6 +109,11 @@ class AudioController extends Notifier<AudioState> {
     state = state.copyWith(status: AudioStatus.paused);
   }
 
+  /// Called when station is tuning/loading
+  void setLoading([Station? station]) {
+    state = state.copyWith(status: AudioStatus.loading, currentStation: station, errorMessage: null);
+  }
+
   /// Called when WebView audio starts playing (no just_audio needed)
   void setPlaying(Station station) {
     state = state.copyWith(status: AudioStatus.playing, currentStation: station, errorMessage: null);

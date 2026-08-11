@@ -132,7 +132,11 @@ class NowPlayingBar extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isLoading ? 'Tuning into station...' : (nearestStation?.name ?? 'Loading station...'),
+                            isLoading
+                                ? (nearestStation != null
+                                    ? 'Tuning into ${nearestStation.name}...'
+                                    : 'Finding live stations...')
+                                : (nearestStation?.name ?? 'No stations available'),
                             style: const TextStyle(
                               color: Color(0xFF00E676),
                               fontSize: 15,
