@@ -106,8 +106,9 @@ class SettingsScreen extends ConsumerWidget {
               final theme = _globeThemes[i];
               final id = theme['id'] as String;
               final selected = currentTheme == id;
-              final grads = theme['grad'] as List<Color>;
-              final atmos = theme['atmos'] as Color;
+              final grads = (theme['grad'] as List).cast<Color>();
+              final atmosHex = theme['atmos'] as String; // stored as '#7c3aed'
+              final atmosColor = Color(int.parse('0xFF${atmosHex.substring(1)}'));
 
               return GestureDetector(
                 onTap: () {
@@ -115,7 +116,6 @@ class SettingsScreen extends ConsumerWidget {
                   // Update globe texture via WebView
                   final webCtrl = ref.read(globeControllerProvider);
                   final url = theme['url'] as String;
-                  final atmosHex = '#${atmos.toARGB32().toRadixString(16).substring(2)}';
                   webCtrl?.runJavaScript(
                     "myGlobe.globeImageUrl('$url').atmosphereColor('$atmosHex');",
                   );
@@ -149,11 +149,11 @@ class SettingsScreen extends ConsumerWidget {
                             width: 24,
                             height: 24,
                             decoration: BoxDecoration(
-                              color: atmos.withValues(alpha: 0.3),
+                              color: atmosColor.withValues(alpha: 0.3),
                               shape: BoxShape.circle,
-                              border: Border.all(color: atmos, width: 1.5),
+                              border: Border.all(color: atmosColor, width: 1.5),
                             ),
-                            child: Icon(Icons.public, size: 13, color: atmos),
+                            child: Icon(Icons.public, size: 13, color: atmosColor),
                           ),
                           if (selected)
                             const Icon(Icons.check_circle, color: Color(0xFF00E676), size: 16),
