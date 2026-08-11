@@ -20,7 +20,15 @@ class StationDatabase {
     final dbPath = await getApplicationDocumentsDirectory();
     final path = join(dbPath.path, filePath);
 
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 2,        // bumped → wipes stale geo-based cache
+      onCreate: _createDB,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        // Clear all cached station data so stale geo/wrong-language results are gone
+        await db.execute('DELETE FROM stations_cache');
+      },
+    );
   }
 
   Future _createDB(Database db, int version) async {

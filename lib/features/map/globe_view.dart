@@ -58,25 +58,35 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
                 'country': country,
               };
             } else if (type == 'place_ready') {
-              // Globe snapped — fetch real stations from Radio Browser (no Radio.garden)
               final lat = (data['lat'] as num).toDouble();
               final lng = (data['lng'] as num).toDouble();
               final country = data['country'] as String? ?? '';
-              print('Flutter: place_ready at ($lat,$lng) — fetching from Radio Browser...');
+              final title = data['title'] as String? ?? '';
+              // City-level language (Indian state precision) → country-level fallback
+              final language = RadioBrowserApi.resolveLanguage(title, country);
+              print('Flutter: place_ready "$title" / "$country" → lang=$language');
 
               Future<void> fetchAndPlay() async {
-                var stations = await ref.read(radioBrowserApiProvider)
-                    .getStationsByGeo(lat, lng, radiusKm: 150);
-                if (stations.isEmpty) {
-                  final cc = country.length >= 2 ? country.substring(0, 2) : country;
-                  stations = await ref.read(radioBrowserApiProvider).getStationsByCountry(cc);
+                final api = ref.read(radioBrowserApiProvider);
+                List<Station> stations;
+
+                if (language != null) {
+                  // Language known → pure language search, zero geo, zero cross-border bleed
+                  stations = await api.getStationsByLanguage(language);
+                } else {
+                  // Country not in our map → geo (100km) then country-name fallback
+                  stations = await api.getStationsByGeo(lat, lng, radiusKm: 100);
+                  if (stations.isEmpty && country.isNotEmpty) {
+                    stations = await api.getStationsByCountry(country);
+                  }
                 }
+
                 ref.read(currentStationsProvider.notifier).state = stations;
                 ref.read(currentStationIndexProvider.notifier).state = 0;
                 if (stations.isNotEmpty) {
                   final first = stations.first;
                   ref.read(nearestStationProvider.notifier).state = first;
-                  print('Flutter: Playing "${first.name}" → ${first.urlResolved}');
+                  print('Flutter: Playing "${first.name}"');
                   final url = first.urlResolved.replaceAll("'", "\\'");
                   _controller.runJavaScript("playStation('$url');");
                   ref.read(audioControllerProvider.notifier).setPlaying(first);

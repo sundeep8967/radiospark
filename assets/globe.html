@@ -25,7 +25,7 @@
     let placeGrid = {};
     const GRID_DEG = 1.0;
 
-    const myGlobe = Globe()
+    let myGlobe = Globe()
       (document.getElementById('globeViz'))
       .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
       .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
@@ -39,6 +39,8 @@
         return Math.max(0.12, Math.min(0.28, Math.log2((d.size || 1) + 1) * 0.055));
       })
       .pointsData([]);
+
+    window.myGlobe = myGlobe; // expose globally so Flutter runJavaScript can call it
 
     // Default view over Karnataka, India
     myGlobe.pointOfView({ lat: 12.9716, lng: 77.5946, altitude: 2.5 });
@@ -163,7 +165,8 @@
           type: 'place_ready',
           lat: place.lat,
           lng: place.lng,
-          country: place.country
+          country: place.country,
+          title: place.title
         }));
       }
     }
