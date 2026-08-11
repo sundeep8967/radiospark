@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=10.0, user-scalable=yes">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; overflow: hidden; background-color: #000; }
+    #globeViz { width: 100vw; height: 100vh; }
+  </style>
+  <script src="https://unpkg.com/globe.gl"></script>
+</head>
+<body>
+  <div id="globeViz"></div>
+
+  <script>
+    console.log("globe.html script executed. Initializing globe...");
+
+    let allPlaces = [];
+    let isUserInteracting = false;
+    let snapTimeout = null;
+    let lastSnappedPlace = null;
+    let placeGrid = {};
+    const GRID_DEG = 1.0;
+
+    const myGlobe = Globe()
+      (document.getElementById('globeViz'))
+      .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+      .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+      .backgroundColor('#000000')
+      .showAtmosphere(true)
+      .atmosphereColor('#3b82f6')
+      .atmosphereAltitude(0.25)
+      .pointColor(() => '#00E676')
+      .pointAltitude(0)
+      .pointRadius(d => {
+        return Math.max(0.1, Math.min(0.25, Math.log2((d.size || 1) + 1) * 0.05));
+      })
+      .pointsData([]);
+
+    // Default view over Karnataka, India
+    myGlobe.pointOfView({ lat: 12.9716, lng: 77.5946, altitude: 2.5 });
+
+    function gridKey(lat, lng) {
+      return `${Math.floor(lat / GRID_DEG)}_${Math.floor(lng / GRID_DEG)}`;
+    }
+
+    // Populate places list and build spatial index grid
+    function initPlaces(placesList) {
+      console.log("initPlaces called with list length:", placesList ? placesList.length : 0);
+      allPlaces = placesList.map(p => ({
+        lat: p.geo[1],
+        lng: p.geo[0],
+        id: p.id,
+        title: p.title,
+        country: p.country,
+        size: p.size
+      }));
+
+      // Build spatial grid for fast lookup
+      placeGrid = {};
+      for (const p of allPlaces) {
+        const k = gridKey(p.lat, p.lng);
+        if (!placeGrid[k]) placeGrid[k] = [];
+        placeGrid[k].push(p);
+      }
+
+      myGlobe.pointsData(allPlaces);
+      console.log("globe pointsData populated. Setting snap timeout...");
+      
+      // Auto-snap to starting location
+      setTimeout(snapToNearest, 500);
+    }
+
+    // Initialize local places list from inlined template variable
+    try {
+      const placesList = %PLACES_JSON%;
+      console.log("Inlined places JSON loaded. Count:", placesList ? placesList.length : 0);
+      initPlaces(placesList);
+    } catch (e) {
+      console.error("Error reading inlined places list:", e);
+    }
+
+    function haversine(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                Math.sin(dLng/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function findNearestPlace(lat, lng, radiusKm) {
+      const cells = Math.ceil(radiusKm / (GRID_DEG * 111));
+      const latCell = Math.floor(lat / GRID_DEG);
+      const lngCell = Math.floor(lng / GRID_DEG);
+
+      let best = null;
+      let bestDist = Infinity;
+
+      for (let dy = -cells; dy <= cells; dy++) {
+        for (let dx = -cells; dx <= cells; dx++) {
+          const k = `${latCell + dy}_${lngCell + dx}`;
+          const bucket = placeGrid[k];
+          if (!bucket) continue;
+          for (const p of bucket) {
+            const d = haversine(lat, lng, p.lat, p.lng);
+            if (d < bestDist && d <= radiusKm) {
+              bestDist = d;
+              best = p;
+            }
+          }
+        }
+      }
+      return best ? { place: best, distKm: bestDist } : null;
+    }
+
+    async function snapToNearest() {
+      console.log("snapToNearest triggered. allPlaces count:", allPlaces.length);
+      if (allPlaces.length === 0 || isUserInteracting) return;
+      const pov = myGlobe.pointOfView();
+
+      // Snap radius ranges based on zoom level
+      const snapRadiusKm = Math.max(100, pov.altitude * 400);
+
+      const result = findNearestPlace(pov.lat, pov.lng, snapRadiusKm);
+      if (!result) {
+        console.log("snapToNearest: No place found within radius", snapRadiusKm);
+        return;
+      }
+
+      const { place, distKm } = result;
+      console.log("snapToNearest: Found place:", place.title, "dist:", distKm);
+
+      if (lastSnappedPlace && lastSnappedPlace.id === place.id) return;
+      lastSnappedPlace = place;
+
+      // Smoothly animate globe to snap target
+      const targetAltitude = Math.min(pov.altitude, 0.8); // Magnetic zoom
+      myGlobe.pointOfView(
+        { lat: place.lat, lng: place.lng, altitude: targetAltitude },
+        600 // Slightly slower for a more majestic feel
+      );
+
+      // Notify Flutter about the snapped place first (updates UI instantly)
+      if (window.GlobeChannel) {
+        window.GlobeChannel.postMessage(JSON.stringify({ type: 'haptic_tick' }));
+        console.log("snapToNearest: Posting place_selected message to Flutter...");
+        window.GlobeChannel.postMessage(JSON.stringify({
+          type: 'place_selected',
+          id: place.id,
+          title: place.title,
+          country: place.country,
+          lat: place.lat,
+          lng: place.lng
+        }));
+      }
+
+      // Fetch the stations from the WebView JS (passes Cloudflare checks automatically!)
+      try {
+        console.log("snapToNearest: Fetching page for place id:", place.id);
+        const response = await fetch(`https://radio.garden/api/ara/content/page/${place.id}`);
+        const json = await response.json();
+        
+        const contentList = json.data.content || [];
+        const stations = [];
+        for (const block of contentList) {
+          if (block.itemsType === 'channel' && block.items) {
+            for (const item of block.items) {
+              const page = item.page || item;
+              const urlPath = page.url || '';
+              const channelId = urlPath.split('/').pop();
+              if (channelId) {
+                stations.push({
+                  id: channelId,
+                  title: page.title || 'Unknown Station',
+                  url: `https://radio.garden/api/ara/content/listen/${channelId}/channel.mp3`,
+                  city: place.title,
+                  country: place.country
+                });
+              }
+            }
+          }
+        }
+
+        // Send the loaded stations list back to Flutter
+        if (window.GlobeChannel) {
+          console.log("snapToNearest: Sending " + stations.length + " stations to Flutter...");
+          window.GlobeChannel.postMessage(JSON.stringify({
+            type: 'stations_loaded',
+            placeId: place.id,
+            stations: stations
+          }));
+        }
+      } catch (e) {
+        console.error("WebView fetch error:", e);
+        if (window.GlobeChannel) {
+          console.log("snapToNearest: Fetch error. Sending fetch_error message to Flutter...");
+          window.GlobeChannel.postMessage(JSON.stringify({
+            type: 'fetch_error',
+            placeId: place.id,
+            error: e.toString()
+          }));
+        }
+      }
+    }
+
+    const controls = myGlobe.controls();
+
+    controls.addEventListener('start', () => {
+      isUserInteracting = true;
+      if (snapTimeout) clearTimeout(snapTimeout);
+      lastSnappedPlace = null;
+    });
+
+    controls.addEventListener('end', () => {
+      isUserInteracting = false;
+      if (snapTimeout) clearTimeout(snapTimeout);
+      snapTimeout = setTimeout(snapToNearest, 250);
+    });
+
+    // Notify Flutter of live positions during manual rotation
+    controls.addEventListener('change', () => {
+      if (!isUserInteracting) return;
+      const pov = myGlobe.pointOfView();
+      if (window.GlobeChannel) {
+        window.GlobeChannel.postMessage(JSON.stringify({
+          lat: pov.lat,
+          lng: pov.lng
+        }));
+      }
+    });
+  </script>
+</body>
+</html>
