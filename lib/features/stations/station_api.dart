@@ -494,24 +494,221 @@ class RadioBrowserApi {
     'arabic',     // SA, EG, AE, IQ, JO, KW, QA...
     'portuguese', // BR + PT + MZ + AO
     'french',     // FR + BE + CH + CA (Quebec) + African francophone
-    'hindi',      // India country-level default — too broad, use geo instead
   };
 
-  /// Resolve language for a place:
-  ///  - Indian cities → state-specific language (kannada, telugu, etc.)
-  ///  - Country-specific language (japanese, german, etc.) → use that language
-  ///  - Broad/shared language (english, spanish, arabic...) → return null so
-  ///    caller uses geo + country search for local relevance
-  static String? resolveLanguage(String placeTitle, String countryName) {
-    // 1. City-level match (India sub-state precision)
+  /// Determine Indian state language purely from GPS coordinates.
+  /// Bounding boxes checked from most-specific to broadest (handles overlaps).
+  /// Covers every Indian city — no city list needed.
+  static String? indiaStateLanguage(double lat, double lng) {
+    // ── South ──────────────────────────────────────────────────
+    // Kerala (narrow coastal — check before KA/TN)
+    if (lat >= 8.2 && lat <= 12.8 && lng >= 74.8 && lng <= 77.5) return 'malayalam';
+    // Tamil Nadu (south-east coast)
+    if (lat >= 8.0 && lat <= 13.5 && lng >= 77.5 && lng <= 80.4) return 'tamil';
+    // Goa
+    if (lat >= 14.9 && lat <= 15.8 && lng >= 73.7 && lng <= 74.4) return 'konkani';
+    // Telangana (north of AP)
+    if (lat >= 15.8 && lat <= 19.9 && lng >= 77.2 && lng <= 81.8) return 'telugu';
+    // Andhra Pradesh (Rayalaseema & Coastal AP — lat 12.6 to 19.1, lng 76.8 to 84.7)
+    if (lat >= 12.6 && lat <= 19.1 && lng >= 76.8 && lng <= 84.7) return 'telugu';
+    // Karnataka (KA east border is ~lng 77.3, past that is AP/TN)
+    if (lat >= 11.5 && lat <= 18.5 && lng >= 74.0 && lng <= 77.3) return 'kannada';
+
+    // ── West ───────────────────────────────────────────────────
+    // Gujarat
+    if (lat >= 20.1 && lat <= 24.7 && lng >= 68.2 && lng <= 74.5) return 'gujarati';
+    // Maharashtra
+    if (lat >= 15.6 && lat <= 22.1 && lng >= 72.6 && lng <= 80.9) return 'marathi';
+
+    // ── East ───────────────────────────────────────────────────
+    // West Bengal
+    if (lat >= 21.5 && lat <= 27.2 && lng >= 85.8 && lng <= 89.9) return 'bengali';
+    // Odisha
+    if (lat >= 17.8 && lat <= 22.6 && lng >= 81.3 && lng <= 87.5) return 'odia';
+    // Assam
+    if (lat >= 24.0 && lat <= 28.0 && lng >= 89.5 && lng <= 96.0) return 'assamese';
+
+    // ── North ──────────────────────────────────────────────────
+    // Punjab
+    if (lat >= 29.5 && lat <= 32.5 && lng >= 73.9 && lng <= 76.9) return 'punjabi';
+    // Haryana + Delhi
+    if (lat >= 27.6 && lat <= 30.9 && lng >= 74.5 && lng <= 77.6) return 'hindi';
+    // Rajasthan
+    if (lat >= 23.0 && lat <= 30.2 && lng >= 69.5 && lng <= 78.3) return 'hindi';
+    // UP, Bihar, Jharkhand, MP → all Hindi belt
+    if (lat >= 21.0 && lat <= 30.5 && lng >= 77.0 && lng <= 88.0) return 'hindi';
+    if (lat >= 21.0 && lat <= 26.9 && lng >= 74.0 && lng <= 82.8) return 'hindi';
+
+    return null; // NEVER force Hindi — fallback to geo (50km nearby stations) if unclassified
+  }
+
+  /// Full world coordinate-based language detection.
+  /// Uses bounding boxes per country + finer regional boxes for multi-lingual countries.
+  static String? coordLanguage(double lat, double lng) {
+    // India — state-level precision (already implemented)
+    if (lat >= 8.0 && lat <= 37.0 && lng >= 68.0 && lng <= 97.5) {
+      return indiaStateLanguage(lat, lng);
+    }
+
+    // ── East / SE Asia ──────────────────────────────────────────
+    if (lat >= 30.0 && lat <= 45.6 && lng >= 129.0 && lng <= 145.5) return 'japanese';
+    if (lat >= 33.0 && lat <= 38.7 && lng >= 125.5 && lng <= 130.0) return 'korean';
+    if (lat >= 37.5 && lat <= 43.0 && lng >= 124.0 && lng <= 131.0) return 'korean';
+    // China — Cantonese in Guangdong/HK, Mandarin elsewhere
+    if (lat >= 21.0 && lat <= 24.5 && lng >= 109.0 && lng <= 117.5) return 'cantonese';
+    if (lat >= 18.0 && lat <= 53.5 && lng >= 73.5 && lng <= 135.0) return 'chinese';
+    if (lat >= 21.9 && lat <= 25.4 && lng >= 120.0 && lng <= 122.0) return 'chinese'; // Taiwan
+    if (lat >= 8.0  && lat <= 21.5 && lng >= 102.0 && lng <= 110.0) return 'vietnamese';
+    if (lat >= 5.5  && lat <= 21.5 && lng >= 97.5  && lng <= 105.7) return 'thai';
+    if (lat >= 0.9  && lat <= 7.6  && lng >= 99.6  && lng <= 119.6) return 'malay';
+    if (lat >= -8.5 && lat <= 5.9  && lng >= 95.0  && lng <= 141.0) return 'indonesian';
+    if (lat >= 4.6  && lat <= 20.5 && lng >= 116.7 && lng <= 126.5) return 'filipino';
+    if (lat >= 5.9  && lat <= 13.9 && lng >= 99.6  && lng <= 105.7) return 'khmer';
+    if (lat >= 13.9 && lat <= 22.5 && lng >= 100.1 && lng <= 107.7) return 'lao';
+    if (lat >= 9.5  && lat <= 28.5 && lng >= 92.0  && lng <= 101.2) return 'burmese';
+    if (lat >= 26.5 && lat <= 30.5 && lng >= 80.0  && lng <= 88.2)  return 'nepali';
+    if (lat >= 5.9  && lat <= 9.9  && lng >= 79.7  && lng <= 81.9)  return 'sinhala';
+
+    // ── Central Asia / Middle East ──────────────────────────────
+    if (lat >= 38.0 && lat <= 51.0 && lng >= 51.0 && lng <= 87.0)  return 'kazakh';
+    if (lat >= 37.0 && lat <= 41.5 && lng >= 60.0 && lng <= 73.5)  return 'uzbek';
+    if (lat >= 36.5 && lat <= 42.0 && lng >= 44.0 && lng <= 50.5)  return 'azerbaijani';
+    if (lat >= 35.0 && lat <= 42.0 && lng >= 44.0 && lng <= 63.5)  return 'persian';
+    if (lat >= 29.5 && lat <= 38.2 && lng >= 60.5 && lng <= 75.0)  return 'urdu';
+    if (lat >= 35.8 && lat <= 42.1 && lng >= 26.0 && lng <= 44.8)  return 'turkish';
+    if (lat >= 29.5 && lat <= 33.3 && lng >= 34.2 && lng <= 35.9)  return 'hebrew';
+    // Arabic belt (Middle East + North Africa)
+    if (lat >= 8.0 && lat <= 37.5 && lng >= -5.5 && lng <= 60.0)   return 'arabic';
+
+    // ── Africa ──────────────────────────────────────────────────
+    if (lat >= -11.7 && lat <= 4.2  && lng >= 29.5 && lng <= 41.9) return 'swahili';
+    if (lat >= 3.4   && lat <= 15.0 && lng >= 33.0 && lng <= 48.0) return 'amharic';
+    if (lat >= 1.5   && lat <= 12.0 && lng >= 40.5 && lng <= 51.5) return 'somali';
+    if (lat >= -18.0 && lat <= -5.0 && lng >= 11.5 && lng <= 21.0) return 'portuguese'; // Angola
+    if (lat >= -26.9 && lat <= -10.5 && lng >= 30.2 && lng <= 40.9) return 'portuguese'; // Mozambique
+    if (lat >= -35.0 && lat <= 5.0 && lng >= -18.0 && lng <= 24.0) return 'french'; // W Africa
+    if (lat >= -35.0 && lat <= 5.0 && lng >= 24.0  && lng <= 52.0) return 'english'; // E/S Africa
+
+    // ── Europe ──────────────────────────────────────────────────
+    if (lat >= 35.0 && lat <= 71.2 && lng >= -10.0 && lng <= 40.0) {
+      // UK & Ireland
+      if (lat >= 49.9 && lat <= 58.7 && lng >= -8.2  && lng <= 1.8)  return 'english';
+      if (lat >= 51.4 && lat <= 55.4 && lng >= -10.5 && lng <= -6.0) return 'english';
+      // Scandinavia
+      if (lat >= 55.3 && lat <= 57.8 && lng >= 8.0  && lng <= 15.2) return 'danish';
+      if (lat >= 57.0 && lat <= 71.2 && lng >= 4.5  && lng <= 15.5) return 'norwegian';
+      if (lat >= 55.3 && lat <= 69.1 && lng >= 11.1 && lng <= 24.2) return 'swedish';
+      if (lat >= 59.8 && lat <= 70.1 && lng >= 20.5 && lng <= 31.6) return 'finnish';
+      // Baltic
+      if (lat >= 55.7 && lat <= 57.9 && lng >= 21.0 && lng <= 28.2) return 'latvian';
+      if (lat >= 53.9 && lat <= 56.5 && lng >= 20.9 && lng <= 26.8) return 'lithuanian';
+      if (lat >= 57.5 && lat <= 59.7 && lng >= 21.8 && lng <= 28.2) return 'estonian';
+      // Germany
+      if (lat >= 47.3 && lat <= 55.1 && lng >= 6.0  && lng <= 15.0) return 'german';
+      // Austria
+      if (lat >= 46.4 && lat <= 49.0 && lng >= 9.5  && lng <= 17.2) return 'german';
+      // Switzerland (multi-lingual)
+      if (lat >= 45.8 && lat <= 47.8 && lng >= 6.0 && lng <= 10.5) {
+        if (lat < 46.5 && lng > 8.5) return 'italian';
+        if (lng < 7.5) return 'french';
+        return 'german';
+      }
+      // Belgium (multi-lingual)
+      if (lat >= 49.5 && lat <= 51.5 && lng >= 2.5 && lng <= 6.4) {
+        return lat >= 50.5 ? 'dutch' : 'french';
+      }
+      // Netherlands
+      if (lat >= 50.8 && lat <= 53.6 && lng >= 3.4 && lng <= 7.2) return 'dutch';
+      // France
+      if (lat >= 41.3 && lat <= 51.1 && lng >= -5.1 && lng <= 8.2) return 'french';
+      // Portugal
+      if (lat >= 36.0 && lat <= 42.2 && lng >= -9.5 && lng <= -6.2) return 'portuguese';
+      // Spain
+      if (lat >= 35.9 && lat <= 43.8 && lng >= -9.3 && lng <= 3.3) return 'spanish';
+      // Italy
+      if (lat >= 35.5 && lat <= 47.1 && lng >= 6.6  && lng <= 18.5) return 'italian';
+      // Poland
+      if (lat >= 48.5 && lat <= 54.9 && lng >= 14.1 && lng <= 24.2) return 'polish';
+      // Czech
+      if (lat >= 48.5 && lat <= 51.1 && lng >= 12.1 && lng <= 18.9) return 'czech';
+      // Slovakia
+      if (lat >= 47.7 && lat <= 49.6 && lng >= 16.9 && lng <= 22.6) return 'slovak';
+      // Hungary
+      if (lat >= 45.7 && lat <= 48.6 && lng >= 16.1 && lng <= 22.9) return 'hungarian';
+      // Romania
+      if (lat >= 43.6 && lat <= 48.3 && lng >= 22.0 && lng <= 30.0) return 'romanian';
+      // Bulgaria
+      if (lat >= 41.2 && lat <= 44.2 && lng >= 22.4 && lng <= 28.6) return 'bulgarian';
+      // Serbia
+      if (lat >= 42.2 && lat <= 46.2 && lng >= 19.0 && lng <= 23.0) return 'serbian';
+      // Croatia
+      if (lat >= 42.4 && lat <= 46.6 && lng >= 13.5 && lng <= 19.5) return 'croatian';
+      // Bosnia
+      if (lat >= 42.5 && lat <= 45.3 && lng >= 15.7 && lng <= 19.7) return 'bosnian';
+      // Albania
+      if (lat >= 39.6 && lat <= 42.7 && lng >= 19.3 && lng <= 21.1) return 'albanian';
+      // North Macedonia
+      if (lat >= 40.9 && lat <= 42.4 && lng >= 20.5 && lng <= 22.7) return 'macedonian';
+      // Slovenia
+      if (lat >= 45.4 && lat <= 46.9 && lng >= 13.4 && lng <= 16.6) return 'slovenian';
+      // Greece
+      if (lat >= 35.0 && lat <= 41.8 && lng >= 19.4 && lng <= 29.7) return 'greek';
+      // Ukraine
+      if (lat >= 44.0 && lat <= 52.4 && lng >= 22.1 && lng <= 40.2) return 'ukrainian';
+      // Belarus
+      if (lat >= 51.3 && lat <= 53.7 && lng >= 23.2 && lng <= 32.8) return 'belarusian';
+      // Russia (European part)
+      if (lat >= 44.0 && lat <= 71.2 && lng >= 28.0 && lng <= 40.0) return 'russian';
+    }
+
+    // Russia (vast — Asia)
+    if (lat >= 41.2 && lat <= 81.0 && lng >= 28.0 && lng <= 190.0) return 'russian';
+
+    // ── Americas ────────────────────────────────────────────────
+    // Canada — Quebec French, rest English
+    if (lat >= 42.0 && lat <= 83.0 && lng >= -141.0 && lng <= -52.0) {
+      if (lat >= 45.0 && lat <= 62.6 && lng >= -79.8 && lng <= -57.0) return 'french';
+      return 'english';
+    }
+    // USA
+    if (lat >= 24.0 && lat <= 49.5 && lng >= -125.0 && lng <= -66.9) return 'english';
+    if (lat >= 18.0 && lat <= 22.2 && lng >= -160.3 && lng <= -154.8) return 'english'; // Hawaii
+    if (lat >= 57.0 && lat <= 71.4 && lng >= -168.0 && lng <= -141.0) return 'english'; // Alaska
+    // Haiti
+    if (lat >= 17.6 && lat <= 20.1 && lng >= -74.5 && lng <= -71.6) return 'french';
+    // Cuba, DR → Spanish
+    if (lat >= 19.8 && lat <= 23.3 && lng >= -85.0 && lng <= -74.1) return 'spanish';
+    if (lat >= 17.4 && lat <= 20.0 && lng >= -72.0 && lng <= -68.3) return 'spanish';
+    // Caribbean default
+    if (lat >= 10.0 && lat <= 27.0 && lng >= -90.0 && lng <= -59.0) return 'english';
+    // Mexico + Central America
+    if (lat >= 7.5 && lat <= 32.7 && lng >= -118.4 && lng <= -77.0) return 'spanish';
+    // Brazil
+    if (lat >= -34.0 && lat <= 5.3 && lng >= -73.5 && lng <= -34.8) return 'portuguese';
+    // Rest of South America
+    if (lat >= -56.0 && lat <= 13.0 && lng >= -81.0 && lng <= -34.0) return 'spanish';
+
+    // ── Oceania ─────────────────────────────────────────────────
+    if (lat >= -44.0 && lat <= -10.0 && lng >= 113.0 && lng <= 154.0) return 'english'; // Australia
+    if (lat >= -47.0 && lat <= -34.0 && lng >= 166.0 && lng <= 178.0) return 'english'; // NZ
+    if (lat >= -9.0  && lat <= -1.0  && lng >= 141.0 && lng <= 156.0) return 'english'; // PNG
+
+    return null;
+  }
+
+  /// Resolve the best language for a globe snap — purely by coordinates.
+  /// City name only used as a fast-path override for known major cities.
+  static String? resolveLanguage(
+      String placeTitle, String countryName, double lat, double lng) {
+    // 1. City-level lookup (fast path for explicitly mapped cities)
     final cityLang = regionToLanguage(placeTitle);
     if (cityLang != null && !_broadLanguages.contains(cityLang)) return cityLang;
 
-    // 2. Country-level match
-    final countryLang = countryToLanguage(countryName);
-    if (countryLang != null && !_broadLanguages.contains(countryLang)) return countryLang;
+    // 2. Full coordinate-based world detection
+    final geoLang = coordLanguage(lat, lng);
+    if (geoLang != null && !_broadLanguages.contains(geoLang)) return geoLang;
 
-    // 3. Broad language or unknown → caller uses geo + country
+    // 3. Broad/unknown → caller uses geo + country search
     return null;
   }
 

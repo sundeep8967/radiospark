@@ -63,7 +63,7 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
               final country = data['country'] as String? ?? '';
               final title = data['title'] as String? ?? '';
               // City-level language (Indian state precision) → country-level fallback
-              final language = RadioBrowserApi.resolveLanguage(title, country);
+              final language = RadioBrowserApi.resolveLanguage(title, country, lat, lng);
               print('Flutter: place_ready "$title" / "$country" → lang=$language');
 
               Future<void> fetchAndPlay() async {
