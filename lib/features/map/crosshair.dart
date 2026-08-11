@@ -13,17 +13,16 @@ class Crosshair extends ConsumerStatefulWidget {
 
 class _CrosshairState extends ConsumerState<Crosshair>
     with TickerProviderStateMixin {
-  // Spin controller (rotation when on a dot)
-  late AnimationController _spinCtrl;
-  // Pulse/ripple controller (playing state)
-  late AnimationController _pulseCtrl;
-  late Animation<double> _pulseScale;
-  late Animation<double> _pulseOpacity;
+  // Nullable to avoid LateInitializationError on hot-reload
+  AnimationController? _spinCtrl;
+  AnimationController? _pulseCtrl;
+
+  Animation<double>? _pulseScale;
+  Animation<double>? _pulseOpacity;
 
   @override
   void initState() {
     super.initState();
-
     _spinCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
@@ -35,49 +34,55 @@ class _CrosshairState extends ConsumerState<Crosshair>
     );
 
     _pulseScale = Tween<double>(begin: 1.0, end: 1.7).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeOut),
+      CurvedAnimation(parent: _pulseCtrl!, curve: Curves.easeOut),
     );
 
     _pulseOpacity = Tween<double>(begin: 0.5, end: 0.0).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeOut),
+      CurvedAnimation(parent: _pulseCtrl!, curve: Curves.easeOut),
     );
   }
 
   @override
   void dispose() {
-    _spinCtrl.dispose();
-    _pulseCtrl.dispose();
+    _spinCtrl?.dispose();
+    _pulseCtrl?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Guard: controllers not ready yet (can happen during hot-reload)
+    if (_spinCtrl == null || _pulseCtrl == null) {
+      return const SizedBox(width: 56, height: 56);
+    }
+
     final audioState = ref.watch(audioControllerProvider);
     final isOnDot = audioState.status == AudioStatus.playing ||
         audioState.status == AudioStatus.loading;
 
-    // Control spin
     if (isOnDot) {
-      if (!_spinCtrl.isAnimating) _spinCtrl.repeat();
-      if (!_pulseCtrl.isAnimating) _pulseCtrl.repeat();
+      if (!_spinCtrl!.isAnimating) _spinCtrl!.repeat();
+      if (!_pulseCtrl!.isAnimating) _pulseCtrl!.repeat();
     } else {
-      _spinCtrl.stop();
-      _pulseCtrl.stop();
-      _pulseCtrl.reset();
+      if (_spinCtrl!.isAnimating) _spinCtrl!.stop();
+      if (_pulseCtrl!.isAnimating) {
+        _pulseCtrl!.stop();
+        _pulseCtrl!.reset();
+      }
     }
 
     return Center(
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Ripple ring when playing
-          if (isOnDot)
+          // Ripple ring when active
+          if (isOnDot && _pulseScale != null && _pulseOpacity != null)
             AnimatedBuilder(
-              animation: _pulseCtrl,
+              animation: _pulseCtrl!,
               builder: (_, __) => Transform.scale(
-                scale: _pulseScale.value,
+                scale: _pulseScale!.value,
                 child: Opacity(
-                  opacity: _pulseOpacity.value,
+                  opacity: _pulseOpacity!.value,
                   child: CustomPaint(
                     size: const Size(56, 56),
                     painter: _DashedCirclePainter(
@@ -94,7 +99,7 @@ class _CrosshairState extends ConsumerState<Crosshair>
 
           // Main dashed ring — spins when on a dot
           AnimatedBuilder(
-            animation: _spinCtrl,
+            animation: _spinCtrl!,
             builder: (_, __) => CustomPaint(
               size: const Size(56, 56),
               painter: _DashedCirclePainter(
@@ -102,7 +107,7 @@ class _CrosshairState extends ConsumerState<Crosshair>
                 strokeWidth: 2.2,
                 dashCount: 10,
                 gapRatio: 0.35,
-                rotation: isOnDot ? _spinCtrl.value * 2 * math.pi : 0,
+                rotation: isOnDot ? _spinCtrl!.value * 2 * math.pi : 0,
                 glowColor: const Color(0xFF00E676),
               ),
             ),
@@ -132,16 +137,16 @@ class _CrosshairState extends ConsumerState<Crosshair>
   }
 }
 
-/// Custom painter — draws a dashed circle
+/// Draws a dashed circle using arc segments
 class _DashedCirclePainter extends CustomPainter {
   final Color color;
   final double strokeWidth;
-  final int dashCount;      // number of dashes
-  final double gapRatio;    // fraction of each segment that is gap
-  final double rotation;    // radians
+  final int dashCount;
+  final double gapRatio;
+  final double rotation;
   final Color? glowColor;
 
-  _DashedCirclePainter({
+  const _DashedCirclePainter({
     required this.color,
     required this.strokeWidth,
     required this.dashCount,
@@ -165,9 +170,8 @@ class _DashedCirclePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     if (glowColor != null) {
-      // Glow pass
       final glowPaint = Paint()
-        ..color = glowColor!.withValues(alpha: 0.35)
+        ..color = glowColor!.withValues(alpha: 0.3)
         ..strokeWidth = strokeWidth + 4
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -182,7 +186,6 @@ class _DashedCirclePainter extends CustomPainter {
       }
     }
 
-    // Main dashes
     for (int i = 0; i < dashCount; i++) {
       final start = rotation + i * segmentAngle + gapAngle / 2;
       canvas.drawArc(

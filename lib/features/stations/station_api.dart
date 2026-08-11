@@ -128,6 +128,26 @@ class RadioBrowserApi {
     'vizianagaram': 'telugu',
     'bhimavaram': 'telugu',
     'machilipatnam': 'telugu',
+    'puttaparthi': 'telugu',
+    'hindupur': 'telugu',
+    'proddatur': 'telugu',
+    'nandyal': 'telugu',
+    'tadepalligudem': 'telugu',
+    'tenali': 'telugu',
+    'bapatla': 'telugu',
+    'narasaraopet': 'telugu',
+    'chilakaluripet': 'telugu',
+    'gudivada': 'telugu',
+    'kavali': 'telugu',
+    'madanapalle': 'telugu',
+    'tadipatri': 'telugu',
+    'dhone': 'telugu',
+    'adoni': 'telugu',
+    'guntakal': 'telugu',
+    'narasapuram': 'telugu',
+    'palasa': 'telugu',
+    'srikalahasti': 'telugu',
+    'puttur': 'telugu',
 
     // ── Telangana ──────────────────────────────────────────────
     'hyderabad': 'telugu',  'secunderabad': 'telugu',
@@ -433,7 +453,9 @@ class RadioBrowserApi {
     'china': 'chinese',
     'hong kong': 'chinese',
     'indonesia': 'indonesian',
-    'india': 'hindi',         // default for unrecognised Indian cities
+    'india': 'hindi',         // NOT used — removed so unknown Indian cities use geo
+    // ↑ INTENTIONALLY keeping key but routing to broad so resolveLanguage returns null
+    // Unknown Indian cities fall to tight geo (50km) in globe_view.dart
     'japan': 'japanese',
     'laos': 'lao',
     'malaysia': 'malay',
@@ -472,6 +494,7 @@ class RadioBrowserApi {
     'arabic',     // SA, EG, AE, IQ, JO, KW, QA...
     'portuguese', // BR + PT + MZ + AO
     'french',     // FR + BE + CH + CA (Quebec) + African francophone
+    'hindi',      // India country-level default — too broad, use geo instead
   };
 
   /// Resolve language for a place:

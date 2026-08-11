@@ -74,8 +74,11 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
                   // Language known → pure language search, zero geo, zero cross-border bleed
                   stations = await api.getStationsByLanguage(language);
                 } else {
-                  // Country not in our map → geo (100km) then country-name fallback
-                  stations = await api.getStationsByGeo(lat, lng, radiusKm: 100);
+                  // Country not in our map → geo then country-name fallback
+                  // India: tight 50km (state borders are close together linguistically)
+                  // Rest of world: 100km (safe, language = national borders)
+                  final geoRadius = country.toLowerCase() == 'india' ? 50 : 100;
+                  stations = await api.getStationsByGeo(lat, lng, radiusKm: geoRadius);
                   if (stations.isEmpty && country.isNotEmpty) {
                     stations = await api.getStationsByCountry(country);
                   }
@@ -103,8 +106,21 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
             } else if (type == 'audio_paused') {
               ref.read(audioControllerProvider.notifier).setPaused();
             } else if (type == 'audio_error') {
-              print('Flutter: WebView audio error: ${data["error"]}');
-              ref.read(audioControllerProvider.notifier).setError();
+              print('Flutter: Audio error — trying next station');
+              final stations = ref.read(currentStationsProvider);
+              final idx = ref.read(currentStationIndexProvider);
+              final nextIdx = idx + 1;
+              if (nextIdx < stations.length && nextIdx < idx + 6) {
+                // Skip to next, max 5 skips per snap
+                final next = stations[nextIdx];
+                ref.read(currentStationIndexProvider.notifier).state = nextIdx;
+                ref.read(nearestStationProvider.notifier).state = next;
+                final url = next.urlResolved.replaceAll("'", "\\'");
+                _controller.runJavaScript("playStation('$url');");
+                ref.read(audioControllerProvider.notifier).setPlaying(next);
+              } else {
+                ref.read(audioControllerProvider.notifier).setError();
+              }
             } else {
               final lat = (data['lat'] as num?)?.toDouble();
               final lng = (data['lng'] as num?)?.toDouble();
