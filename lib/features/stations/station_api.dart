@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'station_database.dart';
 
+/// Station model — uuid, name, direct stream URL, and geo coordinates
 class Station {
   final String stationUuid;
   final String name;
@@ -21,83 +22,136 @@ class Station {
     this.countryCode = '',
   });
 
-  factory Station.fromJson(Map<String, dynamic> json) {
-    final page = json['page'] ?? json;
-    final urlPath = page['url'] as String? ?? '';
-    final channelId = urlPath.split('/').last;
-    
-    final place = page['place'] as Map<String, dynamic>?;
-    final countryObj = page['country'] as Map<String, dynamic>?;
-
+  /// Parse directly from Radio Browser API JSON
+  factory Station.fromRadioBrowserJson(Map<String, dynamic> json) {
     return Station(
-      stationUuid: channelId,
-      name: page['title'] ?? 'Unknown Station',
-      urlResolved: 'https://radio.garden/api/ara/content/listen/$channelId/channel.mp3',
-      lat: null,
-      geoLong: null,
-      country: place?['title'] ?? page['subtitle'] ?? '',
-      countryCode: countryObj?['title'] ?? '',
+      stationUuid: json['stationuuid'] as String? ?? '',
+      name: json['name'] as String? ?? 'Unknown Station',
+      urlResolved: json['url_resolved'] as String? ?? json['url'] as String? ?? '',
+      lat: _parseDouble(json['geo_lat']),
+      geoLong: _parseDouble(json['geo_long']),
+      country: json['state'] as String? ?? json['country'] as String? ?? '',
+      countryCode: json['countrycode'] as String? ?? '',
     );
+  }
+
+  static double? _parseDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
   }
 }
 
-class RadioGardenApi {
+/// Radio Browser API — completely independent, no Radio.garden involved
+class RadioBrowserApi {
   final Dio _dio;
-  final String _baseUrl = 'https://radio.garden/api';
 
-  RadioGardenApi(this._dio);
+  // Radio Browser has multiple community servers — pick a stable one
+  static const _baseUrl = 'https://de1.api.radio-browser.info/json';
 
-  Future<List<Station>> getStationsInPlace(String placeId) async {
+  RadioBrowserApi(this._dio);
+
+  /// Fetch stations near a lat/lng point (radius in km)
+  Future<List<Station>> getStationsByGeo(double lat, double lng, {int radiusKm = 100, int limit = 20}) async {
     try {
-      final cachedStations = await StationDatabase.instance.getCachedStations(placeId);
-      if (cachedStations != null && cachedStations.isNotEmpty) {
-        print("Flutter: Serving ${cachedStations.length} stations from SQLite cache for $placeId");
-        return cachedStations;
+      // First check cache using a geo-based key
+      final cacheKey = 'geo_${lat.toStringAsFixed(1)}_${lng.toStringAsFixed(1)}';
+      final cached = await StationDatabase.instance.getCachedStations(cacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        print('RadioBrowser: Serving ${cached.length} stations from cache for $cacheKey');
+        return cached;
       }
 
-      final response = await _dio.get('$_baseUrl/ara/content/page/$placeId');
-      final data = response.data as Map<String, dynamic>;
-      
-      final contentList = data['data']['content'] as List<dynamic>? ?? [];
-      final List<Station> stations = [];
+      final response = await _dio.get(
+        '$_baseUrl/stations/search',
+        queryParameters: {
+          'limit': limit,
+          'order': 'clickcount',
+          'reverse': 'true',
+          'hidebroken': 'true',
+          'geo_lat': lat,
+          'geo_long': lng,
+          'geo_distance': radiusKm * 1000, // API expects meters
+        },
+      );
 
-      for (var block in contentList) {
-        if (block is Map<String, dynamic> &&
-            block['itemsType'] == 'channel' &&
-            block['items'] != null) {
-          final items = block['items'] as List<dynamic>;
-          for (var item in items) {
-            if (item is Map<String, dynamic>) {
-              stations.add(Station.fromJson(item));
-            }
-          }
-        }
-      }
-      
+      final List<dynamic> data = response.data as List<dynamic>? ?? [];
+      final stations = data
+          .whereType<Map<String, dynamic>>()
+          .where((j) => (j['url_resolved'] as String? ?? '').isNotEmpty)
+          .map((j) => Station.fromRadioBrowserJson(j))
+          .toList();
+
       if (stations.isNotEmpty) {
-        await StationDatabase.instance.cacheStationsForPlace(placeId, stations);
+        await StationDatabase.instance.cacheStationsForPlace(cacheKey, stations);
       }
+      print('RadioBrowser: Fetched ${stations.length} stations near ($lat, $lng)');
       return stations;
     } catch (e) {
-      print("Error fetching Radio Garden stations for place $placeId: $e");
+      print('RadioBrowser: Error fetching by geo: $e');
       return [];
     }
   }
 
+  /// Fetch top stations for a country code
+  Future<List<Station>> getStationsByCountry(String countryCode, {int limit = 20}) async {
+    try {
+      final cacheKey = 'country_$countryCode';
+      final cached = await StationDatabase.instance.getCachedStations(cacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        return cached;
+      }
+
+      final response = await _dio.get(
+        '$_baseUrl/stations/bycountrycodeexact/$countryCode',
+        queryParameters: {
+          'limit': limit,
+          'order': 'clickcount',
+          'reverse': 'true',
+          'hidebroken': 'true',
+        },
+      );
+
+      final List<dynamic> data = response.data as List<dynamic>? ?? [];
+      final stations = data
+          .whereType<Map<String, dynamic>>()
+          .where((j) => (j['url_resolved'] as String? ?? '').isNotEmpty)
+          .map((j) => Station.fromRadioBrowserJson(j))
+          .toList();
+
+      if (stations.isNotEmpty) {
+        await StationDatabase.instance.cacheStationsForPlace(cacheKey, stations);
+      }
+      return stations;
+    } catch (e) {
+      print('RadioBrowser: Error fetching by country $countryCode: $e');
+      return [];
+    }
+  }
+
+  /// Search stations by name (global)
   Future<List<Station>> searchStations(String query) async {
     try {
-      final response = await _dio.get('$_baseUrl/search', queryParameters: {'q': query});
-      final hits = response.data['hits']['hits'] as List<dynamic>? ?? [];
-      final List<Station> results = [];
-      for (var hit in hits) {
-        final source = hit['_source'];
-        if (source != null && source['type'] == 'channel') {
-          results.add(Station.fromJson(source));
-        }
-      }
-      return results;
+      final response = await _dio.get(
+        '$_baseUrl/stations/search',
+        queryParameters: {
+          'name': query,
+          'limit': 30,
+          'order': 'clickcount',
+          'reverse': 'true',
+          'hidebroken': 'true',
+        },
+      );
+      final List<dynamic> data = response.data as List<dynamic>? ?? [];
+      return data
+          .whereType<Map<String, dynamic>>()
+          .where((j) => (j['url_resolved'] as String? ?? '').isNotEmpty)
+          .map((j) => Station.fromRadioBrowserJson(j))
+          .toList();
     } catch (e) {
-      print("Error searching Radio Garden stations: $e");
+      print('RadioBrowser: Error searching "$query": $e');
       return [];
     }
   }
@@ -106,16 +160,19 @@ class RadioGardenApi {
 final dioProvider = Provider((ref) {
   final dio = Dio();
   dio.options.headers = {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-    'Origin': 'https://radio.garden',
-    'Referer': 'https://radio.garden/',
+    'User-Agent': 'RadiosparkApp/1.0 (Android; contact@radiospark.app)',
   };
+  dio.options.connectTimeout = const Duration(seconds: 10);
+  dio.options.receiveTimeout = const Duration(seconds: 10);
   return dio;
 });
 
-final radioGardenApiProvider = Provider((ref) {
-  return RadioGardenApi(ref.watch(dioProvider));
+final radioBrowserApiProvider = Provider((ref) {
+  return RadioBrowserApi(ref.watch(dioProvider));
 });
+
+// Keep old name as alias so nothing else breaks
+final radioGardenApiProvider = radioBrowserApiProvider;
 
 class FavoritesNotifier extends Notifier<List<Station>> {
   @override

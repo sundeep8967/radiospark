@@ -38,7 +38,7 @@ class NowPlayingBar extends ConsumerWidget {
           filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withOpacity(0.85),
             ),
         child: AnimatedSize(
           duration: const Duration(milliseconds: 300),
@@ -52,7 +52,7 @@ class NowPlayingBar extends ConsumerWidget {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.black26,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -90,7 +90,7 @@ class NowPlayingBar extends ConsumerWidget {
                           Text(
                             cityTitle.isNotEmpty ? cityTitle : 'Spin the globe',
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: Colors.black87,
                               fontSize: 17,
                               fontWeight: FontWeight.bold,
                             ),
@@ -100,8 +100,8 @@ class NowPlayingBar extends ConsumerWidget {
                           if (countryTitle.isNotEmpty)
                             Text(
                               countryTitle,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
+                              style: const TextStyle(
+                                color: Colors.black54,
                                 fontSize: 13,
                               ),
                               maxLines: 1,
@@ -116,7 +116,7 @@ class NowPlayingBar extends ConsumerWidget {
 
               // Divider
               Divider(
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.black12,
                 height: 1,
                 indent: 16,
                 endIndent: 16,
@@ -143,8 +143,8 @@ class NowPlayingBar extends ConsumerWidget {
                           ),
                           Text(
                             cityTitle,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
+                            style: const TextStyle(
+                              color: Colors.black54,
                               fontSize: 12,
                             ),
                             maxLines: 1,
@@ -163,7 +163,7 @@ class NowPlayingBar extends ConsumerWidget {
                           padding: const EdgeInsets.only(right: 16.0),
                           child: Icon(
                             isFav ? Icons.favorite : Icons.favorite_border,
-                            color: isFav ? const Color(0xFF00E676) : Colors.white.withOpacity(0.9),
+                            color: isFav ? const Color(0xFF00E676) : Colors.black87,
                             size: 28,
                           ),
                         ),
@@ -171,11 +171,14 @@ class NowPlayingBar extends ConsumerWidget {
                     // Play/Pause/Stop button
                     GestureDetector(
                       onTap: () {
-                        final ctrl = ref.read(audioControllerProvider.notifier);
+                        final webCtrl = ref.read(globeControllerProvider);
                         if (isPlaying) {
-                          ctrl.pause();
+                          webCtrl?.runJavaScript('pauseStation();');
+                          ref.read(audioControllerProvider.notifier).setPaused();
                         } else if (nearestStation != null) {
-                          ctrl.playStream(nearestStation);
+                          final url = nearestStation.urlResolved.replaceAll("'", "\\'");
+                          webCtrl?.runJavaScript("playStation('$url');");
+                          ref.read(audioControllerProvider.notifier).setPlaying(nearestStation);
                         }
                       },
                       child: isLoading 
@@ -186,7 +189,7 @@ class NowPlayingBar extends ConsumerWidget {
                             )
                           : Icon(
                               isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.black87,
                               size: 36,
                             ),
                     ),
@@ -201,14 +204,17 @@ class NowPlayingBar extends ConsumerWidget {
                           ref.read(currentStationIndexProvider.notifier).state = nextIndex;
                           final nextStation = list[nextIndex];
                           ref.read(nearestStationProvider.notifier).state = nextStation;
-                          ref.read(audioControllerProvider.notifier).playStream(nextStation);
+                          final webCtrl = ref.read(globeControllerProvider);
+                          final url = nextStation.urlResolved.replaceAll("'", "\\'");
+                          webCtrl?.runJavaScript("playStation('$url');");
+                          ref.read(audioControllerProvider.notifier).setPlaying(nextStation);
                         }
                       },
                       child: Icon(
                         Icons.skip_next_rounded,
                         color: totalStations > 1
-                            ? Colors.white.withOpacity(0.9)
-                            : Colors.white.withOpacity(0.3),
+                            ? Colors.black87
+                            : Colors.black26,
                         size: 32,
                       ),
                     ),
@@ -221,8 +227,8 @@ class NowPlayingBar extends ConsumerWidget {
                 child: Center(
                   child: Text(
                     'Spin the globe to explore',
-                    style: TextStyle(
-                      color: Colors.white54,
+                    style: const TextStyle(
+                      color: Colors.black54,
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                     ),
@@ -233,9 +239,9 @@ class NowPlayingBar extends ConsumerWidget {
 
             // Bottom nav
             Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 border: Border(
-                  top: BorderSide(color: Colors.white.withOpacity(0.08), width: 0.5),
+                  top: BorderSide(color: Colors.black12, width: 0.5),
                 ),
               ),
               child: SafeArea(
@@ -284,9 +290,8 @@ class _NavItem extends StatelessWidget {
 
   const _NavItem({required this.icon, required this.label, this.active = false, this.onTap});
 
-  @override
   Widget build(BuildContext context) {
-    final color = active ? const Color(0xFF00E676) : Colors.white.withOpacity(0.4);
+    final color = active ? const Color(0xFF00E676) : Colors.black54;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,

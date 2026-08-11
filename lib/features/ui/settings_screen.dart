@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-final mapThemeProvider = StateProvider<String>((ref) => 'satellite');
+// Kept for any remaining refs but theme is fixed to night view
+final mapThemeProvider = StateProvider<String>((ref) => 'night');
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -17,25 +18,23 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentTheme = ref.watch(mapThemeProvider);
-
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        color: Color(0xFF111118),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Handle
+          // Handle bar
           Center(
             child: Container(
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white24,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -49,51 +48,76 @@ class SettingsScreen extends ConsumerWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 24),
-          const Text(
-            'Map Style',
-            style: TextStyle(
-              color: Color(0xFF00E676),
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
+
+          // Globe info tile
           Container(
             decoration: BoxDecoration(
-              color: Colors.black26,
-              borderRadius: BorderRadius.circular(12),
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Column(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                ListTile(
-                  title: const Text('Satellite', style: TextStyle(color: Colors.white)),
-                  trailing: Radio<String>(
-                    value: 'satellite',
-                    groupValue: currentTheme,
-                    activeColor: const Color(0xFF00E676),
-                    onChanged: (value) {
-                      if (value != null) ref.read(mapThemeProvider.notifier).state = value;
-                    },
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7c3aed).withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
                   ),
-                  onTap: () => ref.read(mapThemeProvider.notifier).state = 'satellite',
+                  child: const Icon(Icons.public, color: Color(0xFF7c3aed), size: 22),
                 ),
-                Divider(height: 1, color: Colors.white.withOpacity(0.1)),
-                ListTile(
-                  title: const Text('Graphic (Dark)', style: TextStyle(color: Colors.white)),
-                  trailing: Radio<String>(
-                    value: 'graphic',
-                    groupValue: currentTheme,
-                    activeColor: const Color(0xFF00E676),
-                    onChanged: (value) {
-                      if (value != null) ref.read(mapThemeProvider.notifier).state = value;
-                    },
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Globe View', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                      SizedBox(height: 2),
+                      Text('Night city lights — modern 3D', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    ],
                   ),
-                  onTap: () => ref.read(mapThemeProvider.notifier).state = 'graphic',
+                ),
+                const Icon(Icons.check_circle, color: Color(0xFF00E676), size: 20),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+          // About
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.radio, color: Color(0xFF00E676), size: 22),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Radiospark', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                      SizedBox(height: 2),
+                      Text('Radio Browser API · 30,000+ stations', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
+
           const SizedBox(height: 32),
         ],
       ),

@@ -10,6 +10,9 @@ import '../audio/audio_provider.dart';
 import '../ui/settings_screen.dart';
 import 'crosshair.dart';
 
+// Expose the WebView controller so other widgets can call playStation/pauseStation
+final globeControllerProvider = StateProvider<WebViewController?>((ref) => null);
+
 final globeCenterProvider = StateProvider<Map<String, double>>((ref) => {'lat': 52.3676, 'lng': 4.9041});
 final selectedPlaceProvider = StateProvider<Map<String, dynamic>?>((ref) => null);
 
@@ -54,36 +57,50 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
                 'title': title,
                 'country': country,
               };
-            } else if (type == 'stations_loaded') {
-              final rawStations = data['stations'] as List<dynamic>;
-              print("Flutter: Stations loaded from WebView: ${rawStations.length} stations");
-              final List<Station> stations = rawStations.map((item) {
-                return Station(
-                  stationUuid: item['id'] as String,
-                  name: item['title'] as String,
-                  urlResolved: item['url'] as String,
-                  country: item['city'] as String,
-                  countryCode: item['country'] as String,
-                );
-              }).toList();
-
-              ref.read(currentStationsProvider.notifier).state = stations;
-              ref.read(currentStationIndexProvider.notifier).state = 0;
-
-              if (stations.isNotEmpty) {
-                final firstStation = stations.first;
-                ref.read(nearestStationProvider.notifier).state = firstStation;
-                print("Flutter: Playing first station: ${firstStation.name} (${firstStation.urlResolved})");
-                ref.read(audioControllerProvider.notifier).playStream(firstStation);
-              } else {
-                ref.read(nearestStationProvider.notifier).state = null;
-              }
-            } else if (type == 'fetch_error') {
-              print("Flutter: WebView API fetch error: ${data['error']}");
-            } else {
+            } else if (type == 'place_ready') {
+              // Globe snapped — fetch real stations from Radio Browser (no Radio.garden)
               final lat = (data['lat'] as num).toDouble();
               final lng = (data['lng'] as num).toDouble();
-              ref.read(globeCenterProvider.notifier).state = {'lat': lat, 'lng': lng};
+              final country = data['country'] as String? ?? '';
+              print('Flutter: place_ready at ($lat,$lng) — fetching from Radio Browser...');
+
+              Future<void> fetchAndPlay() async {
+                var stations = await ref.read(radioBrowserApiProvider)
+                    .getStationsByGeo(lat, lng, radiusKm: 150);
+                if (stations.isEmpty) {
+                  final cc = country.length >= 2 ? country.substring(0, 2) : country;
+                  stations = await ref.read(radioBrowserApiProvider).getStationsByCountry(cc);
+                }
+                ref.read(currentStationsProvider.notifier).state = stations;
+                ref.read(currentStationIndexProvider.notifier).state = 0;
+                if (stations.isNotEmpty) {
+                  final first = stations.first;
+                  ref.read(nearestStationProvider.notifier).state = first;
+                  print('Flutter: Playing "${first.name}" → ${first.urlResolved}');
+                  final url = first.urlResolved.replaceAll("'", "\\'");
+                  _controller.runJavaScript("playStation('$url');");
+                  ref.read(audioControllerProvider.notifier).setPlaying(first);
+                } else {
+                  ref.read(nearestStationProvider.notifier).state = null;
+                }
+              }
+              fetchAndPlay();
+            } else if (type == 'audio_playing') {
+              final current = ref.read(nearestStationProvider);
+              if (current != null) {
+                ref.read(audioControllerProvider.notifier).setPlaying(current);
+              }
+            } else if (type == 'audio_paused') {
+              ref.read(audioControllerProvider.notifier).setPaused();
+            } else if (type == 'audio_error') {
+              print('Flutter: WebView audio error: ${data["error"]}');
+              ref.read(audioControllerProvider.notifier).setError();
+            } else {
+              final lat = (data['lat'] as num?)?.toDouble();
+              final lng = (data['lng'] as num?)?.toDouble();
+              if (lat != null && lng != null) {
+                ref.read(globeCenterProvider.notifier).state = {'lat': lat, 'lng': lng};
+              }
             }
           } catch (e) {
             debugPrint("Error parsing globe channel message: $e");
@@ -107,7 +124,10 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
         ),
       );
 
-    _loadLocalHtml();
+    _loadLocalHtml().then((_) {
+      // Expose controller so NowPlayingBar can call playStation/pauseStation
+      ref.read(globeControllerProvider.notifier).state = _controller;
+    });
   }
 
   Future<void> _loadLocalHtml() async {
@@ -157,7 +177,7 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
         // Zoom Controls
         Positioned(
           right: 16,
-          bottom: MediaQuery.of(context).size.height * 0.15, // Above Now Playing Bar
+          bottom: MediaQuery.of(context).size.height * 0.25, // Above Now Playing Bar
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

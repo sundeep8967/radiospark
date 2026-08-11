@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import '../stations/station_api.dart';
-import '../map/globe_view.dart';
 
 enum AudioStatus { initial, loading, playing, paused, error }
 
@@ -82,6 +81,11 @@ class AudioController extends Notifier<AudioState> {
     try {
       final audioSource = AudioSource.uri(
         Uri.parse(station.urlResolved),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+          'Origin': 'https://radio.garden',
+          'Referer': 'https://radio.garden/',
+        },
         tag: MediaItem(
           id: station.urlResolved,
           title: station.name,
@@ -103,6 +107,21 @@ class AudioController extends Notifier<AudioState> {
   Future<void> pause() async {
     await _player.pause();
     state = state.copyWith(status: AudioStatus.paused);
+  }
+
+  /// Called when WebView audio starts playing (no just_audio needed)
+  void setPlaying(Station station) {
+    state = state.copyWith(status: AudioStatus.playing, currentStation: station, errorMessage: null);
+  }
+
+  /// Called when WebView audio is paused
+  void setPaused() {
+    state = state.copyWith(status: AudioStatus.paused);
+  }
+
+  /// Called when WebView audio errors
+  void setError() {
+    state = state.copyWith(status: AudioStatus.error);
   }
 }
 

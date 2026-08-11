@@ -42,7 +42,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     });
 
     try {
-      final api = ref.read(radioGardenApiProvider);
+      final api = ref.read(radioBrowserApiProvider);
       final results = await api.searchStations(query);
       setState(() {
         _results = results;
@@ -169,7 +169,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                     ),
                                     onTap: () {
                                       ref.read(nearestStationProvider.notifier).state = station;
-                                      ref.read(audioControllerProvider.notifier).playStream(station);
+                                      ref.read(currentStationsProvider.notifier).state = [station];
+                                      // Play directly via WebView audio element
+                                      final webCtrl = ref.read(globeControllerProvider);
+                                      final url = station.urlResolved.replaceAll("'", "\\'");
+                                      webCtrl?.runJavaScript("playStation('$url');");
+                                      ref.read(audioControllerProvider.notifier).setPlaying(station);
                                       Navigator.pop(context);
                                     },
                                   );
