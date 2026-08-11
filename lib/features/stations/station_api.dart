@@ -714,7 +714,9 @@ class RadioBrowserApi {
         options: Options(
           headers: {
             'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Origin': 'https://radio.garden',
+            'Referer': 'https://radio.garden/',
           },
           receiveTimeout: const Duration(seconds: 4),
           sendTimeout: const Duration(seconds: 4),
@@ -771,13 +773,21 @@ class RadioBrowserApi {
     return null;
   }
 
+  /// Filter out empty or unplayable URL patterns (.m3u8 playlists)
+  static bool _isPlayableUrl(String url) {
+    final u = url.toLowerCase();
+    if (u.isEmpty) return false;
+    if (u.contains('.m3u8')) return false; // HLS playlist format unsupported in native WebAudio
+    return true;
+  }
+
   /// Fetch stations near a lat/lng point with optional language filter
   Future<List<Station>> getStationsByGeo(
     double lat,
     double lng, {
-    int radiusKm = 60,   // tight radius avoids crossing state borders
-    int limit = 20,
-    String? language,    // e.g. 'kannada', 'telugu'
+    int radiusKm = 100,  // search up to 100km radius for maximum station density
+    int limit = 100,     // return up to 100 stations
+    String? language,
   }) async {
     try {
       final langKey = language != null ? '_${language}' : '';
@@ -804,8 +814,8 @@ class RadioBrowserApi {
       final List<dynamic> data = response.data as List<dynamic>? ?? [];
       final stations = data
           .whereType<Map<String, dynamic>>()
-          .where((j) => (j['url_resolved'] as String? ?? '').isNotEmpty)
           .map((j) => Station.fromRadioBrowserJson(j))
+          .where((s) => _isPlayableUrl(s.urlResolved))
           .toList();
 
       if (stations.isNotEmpty) {
@@ -821,7 +831,7 @@ class RadioBrowserApi {
   }
 
   /// Fetch top stations by language globally
-  Future<List<Station>> getStationsByLanguage(String language, {int limit = 20}) async {
+  Future<List<Station>> getStationsByLanguage(String language, {int limit = 100}) async {
     try {
       final cacheKey = 'lang_$language';
       final cached = await StationDatabase.instance.getCachedStations(cacheKey);
@@ -839,8 +849,8 @@ class RadioBrowserApi {
       final List<dynamic> data = response.data as List<dynamic>? ?? [];
       final stations = data
           .whereType<Map<String, dynamic>>()
-          .where((j) => (j['url_resolved'] as String? ?? '').isNotEmpty)
           .map((j) => Station.fromRadioBrowserJson(j))
+          .where((s) => _isPlayableUrl(s.urlResolved))
           .toList();
       if (stations.isNotEmpty) {
         await StationDatabase.instance.cacheStationsForPlace(cacheKey, stations);

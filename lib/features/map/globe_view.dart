@@ -76,9 +76,23 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
                 final api = ref.read(radioBrowserApiProvider);
                 List<Station> stations = [];
 
-                // Query ONLY Radio.garden native city channels (100% curated, working streams)
+                // 1. Try direct Radio.garden city channels
                 if (id.isNotEmpty) {
                   stations = await api.getGardenStationsForPlace(id, title, country);
+                }
+
+                // 2. Seamless fallback to RadioBrowserApi if garden channels fail or empty
+                if (stations.isEmpty) {
+                  final language = RadioBrowserApi.resolveLanguage(title, country, lat, lng);
+                  if (language != null) {
+                    stations = await api.getStationsByLanguage(language);
+                  } else {
+                    final geoRadius = country.toLowerCase() == 'india' ? 50 : 100;
+                    stations = await api.getStationsByGeo(lat, lng, radiusKm: geoRadius);
+                    if (stations.isEmpty && country.isNotEmpty) {
+                      stations = await api.getStationsByCountry(country);
+                    }
+                  }
                 }
 
                 // If user moved to another place during fetch, discard stale results

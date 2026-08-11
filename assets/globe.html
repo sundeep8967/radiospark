@@ -213,18 +213,32 @@
 
     // Audio control — played entirely in the WebView (bypasses bot blocking)
     let audioEl = document.getElementById('radioAudio');
-    
+    let currentPlayToken = 0;
+
+    audioEl.onerror = (e) => {
+      console.warn('Audio element error event:', e);
+      if (window.GlobeChannel) {
+        window.GlobeChannel.postMessage(JSON.stringify({ type: 'audio_error', error: 'playback_failed' }));
+      }
+    };
+
     function playStation(url) {
+      const token = ++currentPlayToken;
       console.log('playStation called:', url);
+      audioEl.pause();
+      audioEl.removeAttribute('crossorigin');
       audioEl.src = url;
       audioEl.load();
+
       const playPromise = audioEl.play();
       if (playPromise !== undefined) {
         playPromise.then(() => {
+          if (token !== currentPlayToken) return;
           if (window.GlobeChannel) {
             window.GlobeChannel.postMessage(JSON.stringify({ type: 'audio_playing' }));
           }
         }).catch(e => {
+          if (token !== currentPlayToken) return;
           console.error('Audio play error:', e);
           if (window.GlobeChannel) {
             window.GlobeChannel.postMessage(JSON.stringify({ type: 'audio_error', error: e.toString() }));
