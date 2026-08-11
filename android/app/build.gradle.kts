@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.radiopark_clone"
+    namespace = "com.ravana.radiostation"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
