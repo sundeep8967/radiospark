@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../stations/station_api.dart';
 import '../audio/audio_provider.dart';
+import '../ui/settings_screen.dart';
 import 'crosshair.dart';
 
 final globeCenterProvider = StateProvider<Map<String, double>>((ref) => {'lat': 52.3676, 'lng': 4.9041});
@@ -130,6 +131,12 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<String>(mapThemeProvider, (previous, next) {
+      if (previous != next) {
+        _controller.runJavaScript("setTheme('$next');");
+      }
+    });
+
     return Stack(
       children: [
         WebViewWidget(
@@ -147,6 +154,31 @@ class _GlobeViewState extends ConsumerState<GlobeView> {
           const Center(
             child: CircularProgressIndicator(),
           ),
+        // Zoom Controls
+        Positioned(
+          right: 16,
+          bottom: MediaQuery.of(context).size.height * 0.15, // Above Now Playing Bar
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton.small(
+                heroTag: 'zoomIn',
+                backgroundColor: Colors.black54,
+                foregroundColor: Colors.white,
+                onPressed: () => _controller.runJavaScript("zoomIn();"),
+                child: const Icon(Icons.add),
+              ),
+              const SizedBox(height: 8),
+              FloatingActionButton.small(
+                heroTag: 'zoomOut',
+                backgroundColor: Colors.black54,
+                foregroundColor: Colors.white,
+                onPressed: () => _controller.runJavaScript("zoomOut();"),
+                child: const Icon(Icons.remove),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

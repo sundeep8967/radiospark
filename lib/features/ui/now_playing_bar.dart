@@ -6,6 +6,7 @@ import '../audio/audio_provider.dart';
 import '../map/globe_view.dart';
 import 'favorites_screen.dart';
 import 'search_screen.dart';
+import 'settings_screen.dart';
 
 class NowPlayingBar extends ConsumerWidget {
   const NowPlayingBar({super.key});
@@ -255,7 +256,11 @@ class NowPlayingBar extends ConsumerWidget {
                         label: 'Search',
                         onTap: () => SearchScreen.show(context),
                       ),
-                      _NavItem(icon: Icons.settings_outlined, label: 'Settings'),
+                      _NavItem(
+                        icon: Icons.settings_outlined, 
+                        label: 'Settings',
+                        onTap: () => SettingsScreen.show(context),
+                      ),
                     ],
                   ),
                 ),

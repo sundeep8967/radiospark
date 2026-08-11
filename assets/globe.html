@@ -231,6 +231,25 @@
         }));
       }
     });
+
+    // Zoom and Theme controls exposed to Flutter
+    function zoomIn() {
+      const pov = myGlobe.pointOfView();
+      myGlobe.pointOfView({ altitude: Math.max(0.1, pov.altitude - 0.5) }, 500);
+    }
+    
+    function zoomOut() {
+      const pov = myGlobe.pointOfView();
+      myGlobe.pointOfView({ altitude: Math.min(3.0, pov.altitude + 0.5) }, 500);
+    }
+    
+    function setTheme(theme) {
+      if (theme === 'graphic') {
+        myGlobe.globeImageUrl('https://unpkg.com/three-globe/example/img/earth-dark.jpg');
+      } else {
+        myGlobe.globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg');
+      }
+    }
   </script>
 </body>
 </html>
